@@ -1,0 +1,16 @@
+# Template for a new Docker service.
+# Copy this folder to services/<service-name>/, then edit.
+# Secrets come from .env (git-ignored). Never hardcode them here.
+
+services:
+  app:
+    image: <image>:<pinned-version>   # pin a version instead of :latest
+    container_name: <service-name>
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: Europe/London
+    ports:
+      - "<host-port>:<container-port>"
+    volumes:
+      - ./data:/data                   # ./data is git-ignored

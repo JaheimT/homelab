@@ -1,0 +1,44 @@
+# --- Secrets: never commit these ---
+.env
+*.env
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+secrets/
+*secret*
+!*secret*.example*
+
+# --- Service data and backups (can contain personal data) ---
+**/data/
+**/config/data/
+**/etc-pihole/
+**/etc-dnsmasq.d/
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+*.tar
+*.tar.gz
+*.vma*
+backups/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- OS and editor clutter ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# --- Python ---
+__pycache__/
+*.pyc
+.venv/
+venv/
