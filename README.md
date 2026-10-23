@@ -2,7 +2,7 @@
 
 A self-hosted homelab built on Proxmox, used to learn networking, Linux, automation and security alongside a Cybersecurity & Digital Forensics degree.
 
-> **Status:** Phases 0, 1 and 3 complete. Phase 2 (backups) is waiting on extra storage; Phase 4 is next.
+> **Status:** Phases 0, 1 and 3 complete. Phase 2 (backups) is waiting on extra storage; Phase 4 in progress.
 
 ## What it is
 
@@ -38,7 +38,7 @@ flowchart LR
 | 1 | Pi-hole + Unbound in their own LXC | 🟢 Done | [Phase 1](docs/phases/phase-1-pihole.md) |
 | 2 | Backups and a tested restore | ⚪ Planned | Waiting on extra storage |
 | 3 | Home Assistant OS VM, first devices and automation | 🟢 Done | [Phase 3](docs/phases/phase-3-home-assistant.md) |
-| 4 | Platform: Docker, Caddy, Tailscale, Homepage, Uptime Kuma, Forgejo | ⚪ Planned | |
+| 4 | Platform: Tailscale, Nginx, Homepage, Uptime Kuma, Forgejo | 🟡 In progress | [Part 1: Tailscale](docs/phases/phase-4-tailscale.md) |
 | 5 | Everyday services: Vaultwarden, Paperless-ngx, Mealie, Syncthing, Jellyfin, fitness | ⚪ Planned | |
 | 6 | My own Python services: network watcher, budget app | ⚪ Planned | |
 | 7 | AI layer: Ollama, voice, RAG "life admin brain" | ⚪ Planned | |
@@ -62,7 +62,7 @@ diagrams/          architecture and network diagrams
 
 ## Security practices
 
-- No services are exposed to the internet (verified with an external port scan). Remote access will go through Tailscale (Phase 4).
+- No services are exposed to the internet (verified with an external port scan). Remote access goes through Tailscale with an exit node; no open ports.
 - Key-only SSH with password login disabled on every host. Administration will be restricted to a dedicated PAW (Phase 8).
 - 2FA on the Proxmox and Home Assistant web interfaces.
 - Secrets live in `.env` files, which are git-ignored. Only `.env.example` files with placeholder values are committed.
