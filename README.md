@@ -9,12 +9,23 @@ A self-hosted homelab built on Proxmox, used to learn networking, Linux, automat
 | Machine | Role |
 |---|---|
 | **Wammy** (Dell OptiPlex 3080, i5, 2TB NVMe) | Proxmox host running the network services, everyday apps and security tools |
-| **Main desktop** (RTX 3060 Ti) | Runs Ollama for local AI | 
+| **Main desktop** (RTX 3060 Ti) | Runs Ollama for local AI |
 | **Arch laptop** | Privileged access workstation: the only machine allowed to administer Wammy (Not Completed)|
 
 <!-- Add your exported architecture diagram to diagrams/ and link it here -->
-![Architecture diagram](diagrams/architecture.png)
-
+```mermaid
+flowchart LR
+    Devices[Home devices] -->|DNS| PH[Pi-hole<br/>CT 101]
+    PH -->|127.0.0.1#5335| UB[Unbound<br/>recursive + DNSSEC]
+    UB --> Root[Root & authoritative<br/>DNS servers]
+    Devices -.->|backup DNS| Old[Old Docker Pi-hole]
+    subgraph Wammy [Wammy: Proxmox VE]
+        PH
+        UB
+        Old
+    end
+    Router[Router<br/>DHCP] -.->|hands out DNS| Devices
+```
 ## Roadmap
 
 | Phase | Focus | Status | Write-up |
