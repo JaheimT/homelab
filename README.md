@@ -38,7 +38,7 @@ flowchart LR
 | 1 | Pi-hole + Unbound in their own LXC | 🟢 Done | [Phase 1](docs/phases/phase-1-pihole.md) |
 | 2 | Backups and a tested restore | ⚪ Planned | Waiting on extra storage |
 | 3 | Home Assistant OS VM, first devices and automation | 🟢 Done | [Phase 3](docs/phases/phase-3-home-assistant.md) |
-| 4 | Platform: Tailscale, Nginx, Homepage, Uptime Kuma, Forgejo | 🟡 In progress | [Part 1: Tailscale](docs/phases/phase-4-tailscale.md) |
+| 4 | Platform: Tailscale, Nginx, Homepage, Uptime Kuma, Forgejo | 🟡 In progress | [Part 1: Tailscale](docs/phases/phase-4-tailscale.md), [Part 2: HTTPS + monitoring](docs/phases/phase-4-nginx-monitoring.md) |
 | 5 | Everyday services: Vaultwarden, Paperless-ngx, Mealie, Syncthing, Jellyfin, fitness | ⚪ Planned | |
 | 6 | My own Python services: network watcher, budget app | ⚪ Planned | |
 | 7 | AI layer: Ollama, voice, RAG "life admin brain" | ⚪ Planned | |
