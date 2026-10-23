@@ -2,15 +2,15 @@
 
 A self-hosted homelab built on Proxmox, used to learn networking, Linux, automation and security alongside a Cybersecurity & Digital Forensics degree.
 
-> **Status:** Phase 1 in progress (moving Pi-hole into its own container and adding Unbound).
+> **Status:** Phases 0 and 1 complete. Phase 2 (backups) next.
 
 ## What it is
 
 | Machine | Role |
 |---|---|
 | **Wammy** (Dell OptiPlex 3080, i5, 2TB NVMe) | Proxmox host running the network services, everyday apps and security tools |
-| **Main desktop** (RTX 3060 Ti) | Runs Ollama for local AI |
-| **Arch laptop** | Privileged access workstation: the only machine allowed to administer Wammy |
+| **Main desktop** (RTX 3060 Ti) | Runs Ollama for local AI | 
+| **Arch laptop** | Privileged access workstation: the only machine allowed to administer Wammy (Not Completed)|
 
 <!-- Add your exported architecture diagram to diagrams/ and link it here -->
 ![Architecture diagram](diagrams/architecture.png)
@@ -19,10 +19,10 @@ A self-hosted homelab built on Proxmox, used to learn networking, Linux, automat
 
 | Phase | Focus | Status | Write-up |
 |---|---|---|---|
-| 0 | Secure baseline: SSH keys, updates, Proxmox 2FA | 🟡 In progress | [Phase 0](docs/phases/phase-0-baseline.md) |
-| 1 | Pi-hole + Unbound in their own LXC | 🟡 In progress | [Phase 1](docs/phases/phase-1-pihole.md) |
-| 2 | Backups and a tested restore | ⚪ Planned | |
-| 3 | Home Assistant | ⚪ Planned | |
+| 0 | Secure baseline: SSH keys, updates, Proxmox 2FA | 🟢 Done | [Phase 0](docs/phases/phase-0-baseline.md) |
+| 1 | Pi-hole + Unbound in their own LXC | 🟢 Done | [Phase 1](docs/phases/phase-1-pihole.md) |
+| 2 | Backups and a tested restore | ⚪ Planned | Not enough storage yet |
+| 3 | Home Assistant | 🟡 Planned | |
 | 4 | Platform: Docker, Caddy, Tailscale, Homepage, Uptime Kuma, Forgejo | ⚪ Planned | |
 | 5 | Everyday services: Vaultwarden, Paperless-ngx, Mealie, Syncthing, Jellyfin, fitness | ⚪ Planned | |
 | 6 | My own Python services: network watcher, budget app | ⚪ Planned | |
@@ -47,10 +47,10 @@ diagrams/          architecture and network diagrams
 
 ## Security practices
 
-- No services are exposed to the internet; remote access goes through Tailscale.
+- No services are exposed to the internet (verified with an external port scan). Remote access will go through Tailscale (Phase 4).
+- Key-only SSH with password login disabled on every host. Administration will be restricted to a dedicated PAW (Phase 8).
 - Secrets live in `.env` files, which are git-ignored. Only `.env.example` files with placeholder values are committed.
 - Every commit is scanned for secrets with [gitleaks](https://github.com/gitleaks/gitleaks) via a pre-commit hook.
-- Server administration is restricted to a dedicated, locked-down workstation (PAW) using key-based SSH.
 - Public IPs, domains, Wi-Fi names and device lists are never published.
 
 ## Licence
