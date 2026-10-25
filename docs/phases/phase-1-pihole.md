@@ -2,64 +2,38 @@
 
 Oct 23, 2026 · @J
 
-## What I built
+**Status:** ✅ Done
 
-Pi-hole already worked in Docker on the Docker VM, but every Docker restart took DNS down for the whole house. This phase moved it into its own lightweight LXC and added Unbound, so lookups go straight to the authoritative servers instead of a third-party resolver.
+## Goal
 
-A network-wide ad and tracker blocker with my own recursive DNS resolver, running in its own hardened Debian LXC on Proxmox.
+Pi-hole already ran in Docker, but every Docker restart took DNS down for the whole house. I moved it into its own LXC and added Unbound, so DNS stays up independently of anything else and my lookups don't all go to one third-party resolver.
 
 ```
 Devices → Pi-hole (blocks ads/trackers) → Unbound (resolves from the root servers) → Internet
 ```
 
-- **Pi-hole** filters DNS for every device on the network.
-- **Unbound** is a validating recursive resolver. Instead of forwarding every lookup to Google or Cloudflare, it asks the root servers and authoritative servers directly, so no single third party sees all of my household's DNS queries.
-- The old Docker Pi-hole stays running as **backup DNS**.
+The old Docker Pi-hole stays running as backup DNS.
 
-## IP plan
+## Decisions
 
-I split my `/24` home network into two zones: a **static zone** at the bottom of the range for servers and infrastructure, and the router's **DHCP pool** above it for everyday devices. Infrastructure never gets its address from DHCP.
-
-| Device | Addressing |
+| Decision | Why |
 | --- | --- |
-| Router | Gateway |
-| Wammy (Proxmox host) | Static IP, static zone |
-| Pi-hole + Unbound (CT 101) | Static IP, static zone |
-| Old Docker Pi-hole | Backup DNS |
+| Its own LXC, not Docker | DNS shouldn't go down when I restart unrelated containers. An LXC is lighter than a VM and starts in seconds. |
+| Unprivileged container | Root inside the container isn't root on the host. |
+| 1 core, 512 MB RAM | Pi-hole uses about 10% of it. |
+| Static IP on the container, not a DHCP reservation | A DNS server must never change address or depend on the router to get one. |
+| Static zone below the DHCP pool | I first put it inside the DHCP range, where the router could hand the same address to another device. Infrastructure now always sits below the pool. |
+| Start at boot | Otherwise the whole house loses DNS after a reboot. |
+| Unbound as the only upstream | Recursive resolution means no single provider sees all of my household's DNS, and DNSSEC is validated locally. |
+| Old Pi-hole as backup, not `8.8.8.8` | Devices don't only use the secondary when the first fails. A public backup would let ads and trackers through some of the time. |
+| Read the installer before running it | Piping `curl` straight into `bash` runs unseen code from the internet, a supply-chain risk. |
+| IPv6 off on the router | Otherwise devices can receive an IPv6 DNS server that bypasses Pi-hole. |
 
-I first gave the container an address inside the DHCP pool, which meant the router could have handed the same address to another device. I moved it into the static zone.
+## Config
 
-## Step 1: The container
+Container hardening matches Phase 0: fully updated, key-only SSH via `sshd_config.d/hardening.conf`, verified with `sshd -T` and a refused password-only login.
 
-Debian 13 (`debian-13-standard_13.6-1`) LXC, CT 101:
-
-| Setting | Value | Why |
-| --- | --- | --- |
-| Unprivileged | Yes | Root inside the container is not root on the host |
-| Cores / RAM / swap | 1 / 512 MB / 512 MB | Pi-hole is tiny; it uses about 10% of this |
-| Disk | 8 GB on local-lvm |  |
-| Network | Static IP in the static zone, router as gateway | A DNS server must never change address |
-| Start at boot | Yes | Otherwise the whole house loses DNS after a reboot |
-
-I chose a **static IP on the container** rather than a DHCP reservation, so Pi-hole doesn't depend on the router to get its own address.
-
-## Step 2: Container hardening (Phase 0 habits)
-
-- `apt update && apt full-upgrade -y`, because templates are already out of date when downloaded.
-- My `wammys-house` SSH key copied in with `pct push`, plus a `pihole` entry in my `~/.ssh/config`.
-- Key-only SSH via `/etc/ssh/sshd_config.d/hardening.conf`:
-
-```
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-PermitRootLogin prohibit-password
-```
-
-Verified with `sshd -T`: `passwordauthentication no`, and a password-only login attempt is refused with `Permission denied (publickey)`.
-
-## Step 3: Unbound
-
-`/etc/unbound/unbound.conf.d/pi-hole.conf`:
+Unbound (`/etc/unbound/unbound.conf.d/pi-hole.conf`):
 
 ```
 server:
@@ -85,57 +59,40 @@ server:
     private-address: fe80::/10
 ```
 
-- **`interface: 127.0.0.1` + `port: 5335`**: only reachable from inside the container, so only Pi-hole can use it.
-- **`harden-dnssec-stripped`**: rejects answers that should be DNSSEC-signed but aren't, protecting against tampered responses.
-- **`private-address`**: public domains can't resolve to private IPs, which defends against **DNS rebinding** attacks on devices on my LAN.
-- **`edns-buffer-size: 1232`**: avoids fragmented DNS packets, a common cause of flaky lookups.
+- **Localhost on port 5335**, so only Pi-hole can use it.
+- **`harden-dnssec-stripped`** rejects answers that should be signed but aren't.
+- **`private-address`** stops public domains resolving to LAN addresses, which blocks DNS rebinding attacks.
+- **`edns-buffer-size: 1232`** avoids fragmented DNS packets, a common cause of flaky lookups.
+- Disabled `unbound-resolvconf.service`, which can point the container's own DNS at the wrong place.
 
-I also disabled `unbound-resolvconf.service`, which can rewrite the container's `/etc/resolv.conf` to point at a port Unbound isn't listening on.
+Pi-hole's only upstream is `127.0.0.1#5335`. Blocklists, groups and clients were imported from the old Pi-hole with Teleporter (71,493 domains). The router's DHCP now hands out the new Pi-hole first and the old one second.
 
-## Step 4: Testing Unbound
+## Verification
 
 | Test | Result | Meaning |
 | --- | --- | --- |
 | `dig pi-hole.net @127.0.0.1 -p 5335` | `NOERROR` | Unbound resolves on its own |
 | `dig fail01.dnssec.works @127.0.0.1 -p 5335` | `SERVFAIL` | A deliberately broken signature is rejected |
-| `dig dnssec.works @127.0.0.1 -p 5335` | `NOERROR` + `ad` flag | The DNSSEC signature was verified |
-
-## Step 5: Pi-hole
-
-- Downloaded the installer and read it before running it, instead of piping `curl` straight into `bash`. Running unseen code from the internet is a supply-chain risk.
-- Set the only upstream to Unbound: `pihole-FTL --config dns.upstreams '["127.0.0.1#5335"]'`
-- Imported blocklists, groups and clients from the old Pi-hole with **Teleporter** (71,493 domains).
-- Tested from my PC: `nslookup pi-hole.net <pihole-ip>` returns an address; `doubleclick.net` returns `0.0.0.0`.
-
-## Step 6: Cutover
-
-- Router DHCP settings → **DNS Server** set to `<pihole-ip>,<old-pihole-ip>` (new Pi-hole first, old one as backup).
-- I did not use a public resolver like `8.8.8.8` as the backup. Devices don't only use the secondary when the first fails, so ads and trackers would get through some of the time.
-- IPv6 is off on the router, so devices can't receive a router IPv6 DNS server that bypasses Pi-hole.
-- Devices moved over as their DHCP leases renewed overnight.
+| `dig dnssec.works @127.0.0.1 -p 5335` | `NOERROR` + `ad` flag | DNSSEC validated |
+| `nslookup doubleclick.net <pihole-ip>` from my PC | `0.0.0.0` | Blocking works for clients |
 
 ## Results (first night)
 
-- **21,965 queries** from **15 active clients**
-- **18.9% blocked** (4,147 queries)
+- **21,965 queries** from **15 clients**, **18.9% blocked**
 - Container load 0.07, memory 9.9%
+- Cached answers in about 3 µs, compared with about 57 ms for a fresh recursive lookup
 - Example block: `browser-intake-datadoghq.com`, browser telemetry sent to Datadog
-- Cached answers return in about 3 µs, compared with about 57 ms for a fresh lookup through Unbound
 
-## Gotchas and lessons
+## Lessons
 
-- **Teleporter overwrites settings, not just lists.** The import replaced my upstream with Cloudflare and Google (bypassing Unbound) and replaced the admin password. After any import, re-check upstream DNS, DHCP (must stay off) and the password.
-- **Debian 13 LXCs use socket-activated SSH.** `systemctl reload ssh` fails because no service is running; `ssh.socket` starts a fresh `sshd` for each connection, so new config applies automatically. `sshd -t` needs `/run/sshd`, so create it first.
-- **SSH only tries default key names.** A key named `wammys-house` has to be set per host in `~/.ssh/config` or passed with `-i`.
-- **Manual network settings ignore the router.** My PC had a static IP inside the DHCP pool and hardcoded DNS, so the router change never reached it. I switched it to automatic DHCP.
-- **DNS over HTTPS bypasses Pi-hole.** Windows' and browsers' DoH settings send DNS straight to a provider, so they stay off on my devices.
-- **Pi-hole's NTP client fails in an unprivileged LXC** (`Insufficient permissions`). Containers share the host's clock and aren't allowed to change it. I disabled it with `pihole-FTL --config ntp.sync.active false`; the host keeps time.
-- **Always check the prompt** (`lawliet@P1`, `root@Wammy`, `root@pihole`) before running a command. I ran several commands in the wrong terminal.
+- **Teleporter overwrites settings, not just lists.** The import replaced my upstream with Cloudflare and Google, bypassing Unbound, and reset the admin password. After any import I now re-check upstreams, DHCP (must stay off) and the password.
+- **Debian 13 LXCs use socket-activated SSH.** `systemctl reload ssh` fails because no service is running; `ssh.socket` starts a fresh `sshd` per connection, so config changes apply automatically. `sshd -t` needs `/run/sshd` to exist first.
+- **SSH only tries default key names.** A custom-named key has to be set per host in `~/.ssh/config`.
+- **Manual network settings ignore the router.** My PC had a hardcoded IP and DNS, so the DHCP change never reached it until I switched it to automatic.
+- **DNS over HTTPS bypasses Pi-hole.** Windows and browser DoH settings stay off on my devices.
+- **Pi-hole's NTP client fails in an unprivileged LXC.** Containers share the host clock and can't change it, so I disabled it (`ntp.sync.active false`) and let the host keep time.
+- **Check the prompt before every command.** I ran several in the wrong terminal before making it a habit.
 
-## Security concepts
+## Still to do
 
-- **Defence in depth**: DNS filtering blocks trackers and malicious domains for every device, including ones I can't install software on.
-- **Privacy**: recursive resolution means no single upstream provider sees all of my DNS traffic.
-- **Integrity**: DNSSEC validation rejects forged DNS answers.
-- **Least privilege and isolation**: unprivileged container, key-only SSH, and Unbound bound to localhost.
-- **Availability**: static IP, start at boot, and a backup DNS server.
+- [ ] Point the backup Pi-hole's upstream at Unbound instead of Cloudflare/Google
