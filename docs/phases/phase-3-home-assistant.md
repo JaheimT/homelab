@@ -2,7 +2,7 @@
 
 Oct 23, 2026 · @J
 
-**Status:** 🟢 Done
+**Status:** ✅ Done
 
 ## What I built
 
@@ -19,7 +19,7 @@ HAOS is a complete appliance operating system. It manages its own add-ons, updat
 
 ## The VM
 
-I downloaded the current stable `haos_ova` image and built the VM with `qm` (the VM equivalent of `pct`):
+I downloaded the current stable `haos_ova` image and built the VM from the command line:
 
 ```
 qm create $ID --name homeassistant --machine q35 --bios ovmf --ostype l26 \
@@ -56,48 +56,5 @@ curl -s https://raw.githubusercontent.com/home-assistant/version/master/stable.j
 - **Static IP** in the static zone, with Pi-hole as DNS, so Home Assistant's own lookups are filtered and logged.
 - **2FA** (authenticator app) on the owner account, and a non-obvious username.
 - **Least privilege:** the first account is the owner; anyone else gets a separate non-admin account.
-- **Backup before changes:** a local backup before adding any devices. Off-machine backups wait for Phase 2.
-- **Companion app in "Most secure" mode:** Home Assistant uses plain `http://` on my LAN, so the app only connects when it can confirm I'm on my home Wi-Fi. It won't send my session over unencrypted HTTP on a network that just looks similar. Remote access will come through Tailscale (Phase 4), not open ports.
-- **Local over cloud where possible:** local integrations keep working without the internet and don't send device activity to a vendor.
-
-## Devices
-
-| Device | Result |
-| --- | --- |
-| Network printer | Added through the IPP integration: ink levels and status as sensors |
-| Govee bulb (H6008) | No LAN Control option, so cloud-only. Left on Alexa for now; enabled Device Safety to lock it to my account |
-| Alexa | Deferred. Controlling Home Assistant from Alexa needs either a paid cloud subscription or exposing Home Assistant to the internet |
-
-For cloud-only devices, the community store (HACS) has custom integrations, but they run unreviewed inside Home Assistant with full access. I'm treating that as a supply-chain risk to take on deliberately, not as a quick fix.
-
-## First automation
-
-**When** the printer's ink sensor drops below 10%, **then** send a notification to my phone. Tested with **Run actions**, which skips the trigger and runs the action immediately.
-
-## Troubleshooting: the missing web interface
-
-After setting the static IP, the web interface stopped loading for hours. I worked through it layer by layer:
-
-1. **Network layer:** `ping` replied, and `ip neigh` showed the MAC address matched the VM, so there was no IP conflict.
-2. **Service layer:** `curl -v` to port 8123 returned **Connection refused**: the machine was reachable but nothing was listening on that port.
-3. **Application:** `core info` in the HAOS console showed `port: 80`. Home Assistant was serving on port 80, not the usual 8123.
-4. `curl -sI` on port 80 returned `405 Method Not Allowed`, which proved the web server was up. The interface loaded at the plain address with no port.
-
-Lesson: **a working ping with "connection refused" means right machine, wrong port or service down.** The next step is to check which port the service actually uses, not to keep retrying the expected one.
-
-## Gotchas and lessons
-
-- **The netmask was entered twice.** Typing `/24` in the IP field while the netmask field also set it produced `/24/24`, which Home Assistant rejected. Enter the bare IP when there's a separate netmask field.
-- **iOS Local Network permission.** The Companion app can't reach anything on the LAN until it's allowed under the phone's Local Network privacy setting.
-- **iPhone auto-capitalisation** broke the login. Paste credentials from the password manager instead of typing them.
-- **iOS only reveals the Wi-Fi name to apps with Precise Location set to Always**, which the app needs to know it's at home.
-- **Multiple access points with different Wi-Fi names** looked like leaving home, so the app kept disconnecting. Every home network name has to be listed in the app, or the extender should use the same name as the router.
-- **Saved public Wi-Fi networks are an evil-twin risk.** Phones auto-join any network with a saved name, so I removed old public networks.
-
-## Security concepts
-
-- **Defence in depth:** 2FA, Pi-hole DNS filtering, and no exposure to the internet.
-- **Least privilege:** separate non-admin accounts, iOS app permissions, and a device locked to my account.
-- **Confidentiality in transit:** avoiding plain HTTP on untrusted networks.
-- **Supply-chain risk:** weighing third-party integrations before installing them.
-- **Methodical troubleshooting:** testing one layer at a time (network, port, application).
+- **Backup before changes:** a local backup before adding any devices. Off-machine backups were added in Phase 2.
+- **Companion app in "Most secure" mode:** Home Assistant used plain `http://` on my LAN, so the app only connects when it can confirm I'm on my home Wi-Fi. It won't send my session over unencrypted HTTP on a network that just looks similar. Remote access was added in Phase 4 through
