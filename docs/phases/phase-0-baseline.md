@@ -1,35 +1,37 @@
-# Phase 0: Hardening SSH on Wammy
+cd ~/homelab && cat > docs/phases/phase-0-baseline.md <<'EOF'
+# Phase 0: Secure Baseline (SSH, 2FA, Exposure Check)
 
 Oct 22, 2026 · @J
 
-## The big picture
+**Status:** ✅ Done
 
-There are two pieces of SSH software:
+## Goal
 
-- **`ssh`** is the **client**. It runs on your Linux machine and makes the connection.
-- **`sshd`** is the **server daemon**. It runs on Wammy and accepts connections. The "d" stands for daemon, a background service.
+Lock down how Wammy is accessed before any services run on it: key-only SSH, 2FA on the web UI, and nothing reachable from the internet.
 
-Everything before this step, like making the key and the `~/.ssh/config` shortcut, was client-side. This step changes **`sshd`'s rules**, which decide who Wammy lets in and how. Those rules live in `/etc/ssh/sshd_config`.
+## What I did
 
-## Why use a separate file (`sshd_config.d/`)
+- Generated an **Ed25519 SSH key with a passphrase** on my PC. The passphrase lives in my password manager, and `keychain` caches it so I only enter it once per session.
+- Added `~/.ssh/config` aliases for each host, so I connect by name rather than by address.
+- Turned off every form of password login over SSH, using a drop-in config file.
+- Enabled **2FA** on the Proxmox web UI and brought the host fully up to date.
+- Checked what Wammy listens on and what's reachable from outside, and disabled the one service I didn't need.
 
-Modern Linux supports **drop-in config folders**. The main config has an `Include` line that pulls in any extra `.conf` files from that folder. Putting your changes in their own file (`hardening.conf`):
+## Decisions
 
-- keeps them **in one place**, so you or a marker can see exactly what you changed
-- means **system updates won't overwrite them**, because package updates sometimes replace the main `sshd_config`
-- makes them **easy to undo**: delete the file and reload
+| Decision | Why |
+| --- | --- |
+| Keys only, no passwords | Passwords can be brute-forced; a 256-bit key can't be guessed in practice. |
+| Passphrase on the key | If the key file is ever stolen, it's useless without the passphrase. |
+| Changes in a drop-in file (`sshd_config.d/`) instead of `sshd_config` | All my changes are in one place, package updates won't overwrite them, and rolling back is deleting one file. |
+| Disable `KbdInteractiveAuthentication` as well | It's a separate login method that can still prompt for a password through PAM. Disabling only `PasswordAuthentication` leaves that route open. |
+| `PermitRootLogin prohibit-password`, not `no` | Proxmox is built around root and its tools expect root SSH. Key-only root is the compromise. A non-root admin account is planned for Phase 8. |
+| Disable rpcbind | It's only needed for NFS, which I don't use. One less listening service. |
+| No port forwards | Remote access comes through Tailscale (Phase 4), which needs no open ports. |
 
-If the folder doesn't exist, check for the `Include` line with:
+## Config
 
-```
-hostname && grep -i include /etc/ssh/sshd_config
-```
-
-- **If the `Include` line is there**, sshd already reads the folder, so just create it with `mkdir -p /etc/ssh/sshd_config.d`.
-- **If it isn't there**, sshd would ignore the folder completely, so edit the main `/etc/ssh/sshd_config` instead.
-- The `hostname` part makes sure you're actually on Wammy and not your own machine.
-
-## The three settings
+`/etc/ssh/sshd_config.d/hardening.conf`:
 
 ```
 PasswordAuthentication no
@@ -37,61 +39,37 @@ KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
 ```
 
-**`PasswordAuthentication no`** This turns off password login. Otherwise anyone on your network can try guessing the root password. Bots on the internet do this constantly, which is called **brute forcing**. With this set to `no`, Wammy only accepts keys, and guessing a 256-bit key isn't practical.
-
-**`KbdInteractiveAuthentication no`** This one is a common gotcha. "Keyboard-interactive" is a separate login method that can **also ask for a password**, through a different system called PAM. If you only disable `PasswordAuthentication`, some systems will still show a password prompt through this route. Disabling both closes the gap. On older versions this setting is called `ChallengeResponseAuthentication`.
-
-**`PermitRootLogin prohibit-password`** Logging in as root is risky because root controls everything. There are three options:
-
-- `yes` lets root log in with a password or a key
-- `no` blocks root completely
-- `prohibit-password` lets root log in **with a key only**
-
-You'd normally block root and log in as a regular user with `sudo`. Proxmox, though, is built around root, and its tools expect root SSH. `prohibit-password` is the sensible middle ground. Logging in as a non-root user could be a later Phase 8 improvement.
-
-## The safety steps
+Applied with a test first, so a typo can't take SSH down:
 
 ```
 sshd -t && systemctl reload ssh
 ```
 
-**`sshd -t`** (test mode) This checks the config for mistakes **without applying it**. If there's a typo, it tells you, and SSH keeps running on the old working config. Skipping this step is how people break SSH on a server they can't physically reach.
+A reload keeps existing sessions open, so I kept my current session as a lifeline and tested key login from a new terminal before closing it.
 
-**`&&`** This runs the second command only if the first one succeeds. If the test fails, the reload never happens.
+## Exposure check
 
-**`systemctl reload ssh`** This tells sshd to re-read its config. A **reload** applies the new rules to *new* connections without dropping *existing* ones. A **restart** fully stops and starts the service.
+**Inside: what Wammy listens on (`ss -tlnp`)**
 
-**Testing in a new terminal while the old one stays open** Because existing connections survive a reload, your current session is a **lifeline**. If key login fails in the new terminal, you can still use the old one to fix the mistake. If you closed it first and the config was wrong, you'd be locked out and need a monitor and keyboard on the OptiPlex.
-
-## External exposure check
-
-Nothing on Wammy is reachable from the internet. I checked from the inside (what Wammy listens on) and the outside (what the router lets through).
-
-**Inside view: `ss -tlnp` on Wammy**
-
-| Port | Process | Bound to | Verdict |
+| Port | Service | Bound to | Verdict |
 | --- | --- | --- | --- |
-| 22 | sshd | All interfaces | OK, key-only login |
-| 8006 | pveproxy (web UI) | All interfaces | OK, 2FA on |
+| 22 | sshd | All interfaces | OK, key-only |
+| 8006 | Proxmox web UI | All interfaces | OK, 2FA on |
 | 3128 | spiceproxy (VM console) | All interfaces | OK, normal for Proxmox |
-| 85 | pvedaemon | Localhost only | OK |
-| 25 | Postfix mail relay | Localhost only | OK |
-| 111 | rpcbind | All interfaces | Disabled, not needed without NFS |
+| 85 | pvedaemon | Localhost | OK |
+| 25 | Postfix | Localhost | OK |
+| 111 | rpcbind | All interfaces | Disabled |
 
-rpcbind was disabled with `systemctl disable --now rpcbind.service rpcbind.socket`. Both units are needed because systemd holds the socket open and would restart the service on demand.
+**Outside: what the internet can reach**
 
-**Outside view: router and scan**
+- Router: no port forwards, UPnP off, DMZ off.
+- GRC ShieldsUP! common-ports scan: every port Stealth, including a custom probe of 8006 and 3128.
 
-- Router (`192.168.1.254`): no port forwards, UPnP off, DMZ off.
-- GRC ShieldsUP! common ports scan: every port Stealth.
-- ShieldsUP! custom probe of 8006 and 3128: Stealth.
-- ShieldsUP! only tests IPv4, so the router settings cover the IPv6 side.
+## Lessons
 
-Remote access will come later through Tailscale (Phase 4), which needs no open ports.
-
-## Security concepts to note
-
-- **Attack surface reduction**: removing ways in that you don't need.
-- **Least privilege**: root only with strong authentication.
-
-Both are good things to name in the Phase 0 GitHub write-up.
+- **Disabling a service isn't always enough.** rpcbind is socket-activated: systemd holds the port open and starts the service on demand. I had to disable both `rpcbind.service` and `rpcbind.socket`.
+- **`PasswordAuthentication no` alone doesn't stop password prompts.** Keyboard-interactive auth has to go too.
+- **External scans have blind spots.** ShieldsUP! only tests IPv4, so the router settings are what cover IPv6.
+- **Never change SSH without a test and a spare session.** `sshd -t` plus an open session means a mistake costs a minute, not a trip to the server with a monitor and keyboard.
+EOF
+git diff --stat
