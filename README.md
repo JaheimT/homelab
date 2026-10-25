@@ -2,7 +2,7 @@
 
 A self-hosted homelab built on Proxmox, used to learn networking, Linux, automation and security alongside a Cybersecurity & Digital Forensics degree.
 
-> **Status:** Phases 0, 1 and 3 complete. Phase 2 (backups) is waiting on extra storage; Phase 4 in progress.
+> **Status:** Phases 0, 1 , 2 and 3 complete. Phase 4 in progress.
 
 ## What it is
 
@@ -12,22 +12,48 @@ A self-hosted homelab built on Proxmox, used to learn networking, Linux, automat
 | **Main desktop** (RTX 3060 Ti) | Runs Ollama for local AI |
 | **Arch laptop** | Planned privileged access workstation (Phase 8): the only machine allowed to administer Wammy |
 
+### Network and services
+
 ```mermaid
 flowchart LR
-    Devices[Home devices] -->|DNS| PH[Pi-hole<br/>CT 101]
-    PH -->|127.0.0.1#5335| UB[Unbound<br/>recursive + DNSSEC]
-    UB --> Root[Root & authoritative<br/>DNS servers]
-    Devices -.->|backup DNS| Old[Old Docker Pi-hole]
-    HA[Home Assistant OS<br/>VM] -->|DNS| PH
-    HA --> Printer[Network printer]
-    HA -->|push notifications| Phone[Companion app]
-    subgraph Wammy [Wammy: Proxmox VE]
-        PH
-        UB
-        Old
-        HA
+    Remote["Phone / laptop<br/>away from home"] -->|Tailscale| TS
+    Devices[Home devices]
+
+    subgraph Wammy ["Wammy: Proxmox VE"]
+        TS["Tailscale · CT 103<br/>subnet router + exit node"]
+        PH["Pi-hole · CT 101"] --> UB["Unbound<br/>recursive + DNSSEC"]
+        NG["Nginx · CT 104<br/>reverse proxy, wildcard TLS"]
+        HA["Home Assistant OS · VM 102"]
+        subgraph Docker ["Docker VM 100"]
+            UK[Uptime Kuma]
+            HP[Homepage]
+        end
     end
-    Router[Router<br/>DHCP] -.->|hands out DNS| Devices
+
+    Devices -->|DNS| PH
+    Devices -->|HTTPS| NG
+    TS -->|split DNS| PH
+    TS -->|HTTPS| NG
+    NG --> HA
+    NG --> UK
+    NG --> HP
+    UB --> Root[Root DNS servers]
+    UK -->|alerts| Ntfy[ntfy → phone]
+```
+
+### Backups (3-2-1)
+
+```mermaid
+flowchart LR
+    subgraph Wammy ["Wammy: Proxmox VE"]
+        VMs[VMs + containers] -->|nightly vzdump| Local[("Copy 1<br/>local disk")]
+        VMs -->|"restic: configs nightly,<br/>VMs weekly"| Enc((encrypt))
+    end
+    Local -->|pulled over SSH| PC[("Copy 2<br/>main PC")]
+    Enc --> DB[("Copy 3<br/>Dropbox app folder")]
+    Local -.->|check-in| UK[Uptime Kuma]
+    Enc -.->|check-in| UK
+    UK -->|missed backup| Ntfy[ntfy → phone]
 ```
 
 ## Roadmap
@@ -36,9 +62,9 @@ flowchart LR
 |---|---|---|---|
 | 0 | Secure baseline: SSH keys, updates, Proxmox 2FA | 🟢 Done | [Phase 0](docs/phases/phase-0-baseline.md) |
 | 1 | Pi-hole + Unbound in their own LXC | 🟢 Done | [Phase 1](docs/phases/phase-1-pihole.md) |
-| 2 | Backups and a tested restore | 🟢 Done |
+| 2 | Backups: 3-2-1 with encrypted offsite, tested restores, push alerts | 🟢 Done | [Phase 2](docs/phases/phase-2-backups.md) |
 | 3 | Home Assistant OS VM, first devices and automation | 🟢 Done | [Phase 3](docs/phases/phase-3-home-assistant.md) |
-| 4 | Platform: Tailscale, Nginx, Homepage, Uptime Kuma, Forgejo | 🟡 In progress | [Part 1: Tailscale](docs/phases/phase-4-tailscale.md), [Part 2: HTTPS + monitoring](docs/phases/phase-4-nginx-monitoring.md) |
+| 4 | Platform: Tailscale, Nginx, Homepage, Uptime Kuma, Forgejo | 🟡 In progress | [Part 1: Tailscale](docs/phases/phase-4-tailscale.md) · [Part 2: Domain & reverse proxy](docs/phases/phase-4-reverse-proxy.md) |
 | 5 | Everyday services: Vaultwarden, Paperless-ngx, Mealie, Syncthing, Jellyfin, fitness | ⚪ Planned | |
 | 6 | My own Python services: network watcher, budget app | ⚪ Planned | |
 | 7 | AI layer: Ollama, voice, RAG "life admin brain" | ⚪ Planned | |
