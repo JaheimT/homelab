@@ -1,4 +1,3 @@
-cd ~/homelab && cat > docs/phases/phase-0-baseline.md <<'EOF'
 # Phase 0: Secure Baseline (SSH, 2FA, Exposure Check)
 
 Oct 22, 2026 · @J
