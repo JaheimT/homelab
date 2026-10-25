@@ -21,7 +21,7 @@ Media is deliberately **not** backed up offsite. It's replaceable, and terabytes
 I updated and secured everything first, so the first backup captured a clean state:
 
 - Took temporary snapshots of every VM and container as an undo point, then updated all guests, the Docker containers (`docker compose pull && up -d`), Home Assistant and the Proxmox host
-- Rotated every credentia. Each now has its own unique password-manager item: passphrases for anything I might type at a console, long random strings for anything I paste
+- Rotated every credential. Each now has its own unique password-manager item: passphrases for anything I might type at a console, long random strings for anything I paste
 - Rotated the Home Assistant backup encryption key and deleted backups made with the old key
 - Set password-manager URL matching to **Host**, because the default (base domain) treated every `*.<domain>` service as one site
 
