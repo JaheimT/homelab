@@ -2,7 +2,7 @@
 
 Oct 23, 2026 · @J
 
-**Status:** 🟢 Done
+**Status:** ✅ Done
 
 ## What I built
 
@@ -22,9 +22,9 @@ Phone (anywhere) ── WireGuard tunnel ──▶ Tailscale LXC ──▶ Home 
 
 Tailscale builds an encrypted **WireGuard** mesh between my devices (a tailnet). Devices connect **outwards** to Tailscale's coordination servers, which introduce them to each other, so nothing at home accepts incoming connections. My external exposure check stays all-stealth.
 
-A **subnet router** means I don't need Tailscale on every service: one container forwards tailnet traffic into my home network.
+I chose it over hosting a plain WireGuard server because that would need an open port on my router and manual key management on every device.
 
-Tailscale is also one of the most popular remote access tools for homelabs, so it has a large community behind it.
+A **subnet router** means I don't need Tailscale on every service: one container forwards tailnet traffic into my home network.
 
 ## The container
 
@@ -58,7 +58,7 @@ tailscale up --advertise-routes=<home-subnet>/24 --accept-dns=false
 tailscale set --advertise-exit-node
 ```
 
-- **IP forwarding** lets the container pass traffic on, like a router. Linux drops it by default.
+- **IP forwarding** enabled so the container can pass traffic on, like a router.
 - Advertised routes and exit nodes must be **approved in the admin console** before they work, so a compromised device can't quietly expose a network.
 - **Key expiry disabled** for the always-on server, so remote access doesn't break after 180 days. It stays on for the phone, which can be lost.
 
@@ -113,15 +113,16 @@ Everything worked on Wi-Fi but nothing loaded on EE mobile data. I worked throug
 - Home becomes a single point of failure for my phone's internet while the exit node is on
 - Speed is limited by my home upload
 - The Tailscale container becomes high-value: it carries all my phone's traffic, so it's hardened and auto-patched
-- The Home Assistant app uses "Less secure" connection mode with a plain HTTP URL. Accepted because the VPN is always on, so the traffic is always inside WireGuard; to be removed once Nginx provides HTTPS.
+- The Home Assistant app used "Less secure" connection mode with a plain HTTP URL. Accepted because the VPN is always on, so the traffic stays inside WireGuard. Part 2 adds HTTPS through Nginx, which removes the need for it.
 - Access controls are currently allow-all; tightening them to least privilege is planned for Phase 8
 
 ## Gotchas and lessons
 
-- **Placeholders in commands:** `<x>` in a command is read by bash as input redirection. Use a variable instead.
+- **Placeholders in commands:** `<x>` in a command is read by bash as input redirection. I use variables instead.
 - **Check the prompt before every command.** Several steps landed on the wrong machine (an SSH key copied to the VM itself, SSH config written on Wammy). File timestamps (`ls -la`) showed where commands had actually run.
 - **Test from a new terminal before closing the old one.** Locking the Docker VM to key-only before its key was installed would have locked me out; the open session let me fix it.
 - **One-off setup keys** (NetBird) become invalid after first use, so a leaked key that's already been used is harmless.
 - **A ping isn't proof of a data path.** Tailscale's own ping uses control messages; `--icmp` and `tcpdump` showed what real traffic was doing.
 - **Change one variable at a time.** Testing with Wi-Fi on gave a false positive, because the phone reached Home Assistant directly.
+- **Test a reboot.** After restarting Wammy, my phone's exit node was deselected and internal names stopped resolving. I re-selected it and added **split DNS** in Tailscale, so my domain always resolves through Pi-hole.
 - Sometimes it's good to step away and come back with fresh eyes.
